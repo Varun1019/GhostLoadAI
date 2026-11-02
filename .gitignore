@@ -1,0 +1,52 @@
+# Dependencies
+node_modules/
+*/node_modules/
+venv/
+.venv/
+*/venv/
+*/.venv/
+
+# Build artifacts
+.next/
+*/.next/
+out/
+build/
+dist/
+*.tsbuildinfo
+next-env.d.ts
+
+# Python bytecode & cache
+__pycache__/
+*/__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+*/.pytest_cache/
+
+# Databases
+*.db
+*.sqlite
+*.sqlite3
+
+# Environment & Secrets (Keep .env.example)
+.env
+.env.*
+!.env.example
+*.env
+.aicore/
+*.aicore
+
+# Firebase Service Account Credentials
+*firebase*service*account*.json
+*service-account*.json
+*serviceAccountKey*.json
+
+# IDE & Editor folders
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS generated files
+.DS_Store
+Thumbs.db
