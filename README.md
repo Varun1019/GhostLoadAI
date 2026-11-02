@@ -13,7 +13,8 @@ GhostLoad AI is a resilient B2B marketplace platform for mission-critical indust
 - **Frontend**: Next.js 14 (App Router, TypeScript, Tailwind CSS, Lucide icons).
 - **Backend**: Python FastAPI with SQLite accessed through an abstracted SQLAlchemy Repository pattern (portable schema to SAP HANA Cloud).
 - **Optimization Solver**: Google OR-Tools (`pywraplp` GLOP / CBC).
-- **LLM Adapter**: Unified interface supporting SAP Generative AI Hub (`gen_ai_hub`), regex fallback parser, and canned demo responses.
+- **LLM Adapter**: Google Gemini is the default active LLM provider using the official `google-genai` Python SDK (`gemini-2.5-flash`). Fallback chain seamlessly transitions to SAP Generative AI Hub (adapter implemented and ready, inactive unless configured) and deterministic regex/canned rules when offline.
+- **Feature Flag System**: Centralized flags (`backend/app/features.py` and `frontend/src/config/features.ts`) partition live production modules from features marked "Coming soon" with disabled tooltips and preview screens.
 - **Authentication**: Firebase Authentication verification with zero-network `DEMO_MODE=true` one-click persona switching (`Demo Buyer`, `Demo Seller`, `Demo QC Inspector`).
 
 ---
@@ -75,10 +76,33 @@ The system comes pre-seeded with **12 hypothetical sellers** across Bengaluru, C
 
 | Variable | Default Value | Description |
 | :--- | :--- | :--- |
+| `LLM_PROVIDER` | `gemini` | Active LLM engine (`gemini`, `sap_genai`, or `canned`) |
+| `GEMINI_API_KEY` | *(empty)* | Google GenAI API key (backend only, never leaked to UI/logs) |
+| `GEMINI_MODEL` | `gemini-2.5-flash` | Configurable Gemini model name (e.g. `gemini-2.5-flash`, `gemini-2.5-pro`) |
+| `LLM_TIMEOUT_SECONDS` | `15` | Request timeout before triggering fallback |
 | `DEMO_MODE` | `true` | Enables 1-click persona switching with zero network dependency |
 | `DATABASE_URL` | `sqlite:///./ghostload.db` | SQLAlchemy connection string (SAP HANA Cloud ready) |
 | `NEXT_PUBLIC_API_URL` | `http://127.0.0.1:8000` | Backend API URL for frontend fetch |
-| `AICORE_AUTH_URL` | *(optional)* | SAP AI Core OAuth endpoint |
+| `AICORE_AUTH_URL` | *(optional)* | SAP AI Core OAuth endpoint (adapter ready, inactive unless configured) |
 | `AICORE_CLIENT_ID` | *(optional)* | SAP AI Core Client ID |
 | `AICORE_CLIENT_SECRET` | *(optional)* | SAP AI Core Secret |
 | `AICORE_BASE_URL` | *(optional)* | SAP AI Core deployment base URL |
+
+---
+
+## Feature Flag Status
+
+| Feature ID | Feature Name | Status | Browser Verification & Reason |
+| :--- | :--- | :--- | :--- |
+| `compare` | Side-by-Side Comparison | **Live** | Verified: Modal compares 3 items on price, lead time, trust score. |
+| `reviews_and_ratings` | Verified Ratings & Reviews | **Live** | Verified: Quality/delivery stars submitted, tested via pytest. |
+| `seller_replies` | Seller Dispute Replies | **Live** | Verified: 1-reply quota enforced and persisted to DB & audit log. |
+| `qc_inspector_queue` | QC Inspector Queue | **Live** | Verified: Auto-flags ≤2 ratings, approves/rejects certifications. |
+| `csv_export` | Audit Log CSV Export | **Live** | Verified: Generates RFC-compliant CSV stream from SQLite repository. |
+| `google_signin` | Production Google Sign-in | *Coming soon* | Offline demo auth works; production Firebase tenant OAuth requires keys. |
+| `ai_chat_assistant` | Interactive AI Copilot | **Live** | Verified: Interactive chat bot on `/chat` powered by Google Gemini (`gemini-3-flash-preview`). |
+| `smart_sort` | Smart Sort (NLP) | **Live** | Verified: Natural language query reranking on marketplace with Gemini intent extraction and reasons. |
+| `warehouse_transport_listings` | Warehouse & Fleet Transport | *Coming soon* | Dedicated freight reservation portal in development. |
+| `route_map` | Live Route Map | *Coming soon* | Centered preview screen active; interactive GIS map canvas in development. |
+| `learning_hub_panel` | Learning Hub LMS Sync | *Coming soon* | Reference modal built; full enterprise LMS sync integration in development. |
+| `impact_panel` | ESG & Scope-3 Emissions | *Coming soon* | Centered preview screen active; carbon calculator in development. |

@@ -84,6 +84,7 @@ export default function EmergencyRecoveryPage() {
   const [decisionReason, setDecisionReason] = useState("Backup supplier allocation confirmed for production line.");
   const [submittingDecision, setSubmittingDecision] = useState(false);
   const [actionNotice, setActionNotice] = useState<string | null>(null);
+  const [aiFallbackNote, setAiFallbackNote] = useState<string | null>(null);
 
   const handleSolve = async () => {
     setSolving(true);
@@ -107,6 +108,11 @@ export default function EmergencyRecoveryPage() {
         body: JSON.stringify({ text: disruptionText }),
       });
       const parseData = await parseRes.json();
+      if (parseData.is_fallback) {
+        setAiFallbackNote(parseData.fallback_note || "AI is offline, using basic mode");
+      } else {
+        setAiFallbackNote(null);
+      }
       const extracted = parseData.data || { quantity: 1000, deadline_days: 3, item: "Braking Systems" };
 
       setAgentSteps([
@@ -266,6 +272,17 @@ export default function EmergencyRecoveryPage() {
           <Link href="/seller/reservations" className="text-xs text-emerald-900 underline font-semibold">
             View seller holds →
           </Link>
+        </div>
+      )}
+
+      {/* Non-blocking AI Fallback Notification */}
+      {aiFallbackNote && (
+        <div className="p-3 bg-amber-50 border border-amber-200 text-amber-900 rounded-lg text-xs font-medium flex items-center justify-between">
+          <span className="flex items-center gap-1.5">
+            <span className="inline-block w-2 h-2 rounded-full bg-amber-500"></span>
+            {aiFallbackNote}
+          </span>
+          <span className="text-amber-700 font-normal">Deterministic rules active</span>
         </div>
       )}
 

@@ -6,6 +6,15 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Button } from "@/ui/Button";
 import { Card } from "@/ui/Card";
+import { Badge } from "@/ui/Badge";
+
+interface AIStatus {
+  provider: string;
+  model: string;
+  status: string;
+  message: string;
+  active_fallback: string;
+}
 
 export default function SettingsPage() {
   const { user, updateProfile, apiBase } = useAuth();
@@ -19,6 +28,10 @@ export default function SettingsPage() {
   const [savedSuccess, setSavedSuccess] = useState(false);
   const [resettingSeed, setResettingSeed] = useState(false);
 
+  // AI Connection State
+  const [aiStatus, setAiStatus] = useState<AIStatus | null>(null);
+  const [testingAi, setTestingAi] = useState(false);
+
   useEffect(() => {
     if (user) {
       setRole(user.role);
@@ -28,6 +41,32 @@ export default function SettingsPage() {
       setGstNumber(user.gst_number || "");
     }
   }, [user]);
+
+  useEffect(() => {
+    const fetchAiStatus = async () => {
+      try {
+        const res = await fetch(`${apiBase}/api/ai/status`);
+        const data = await res.json();
+        setAiStatus(data);
+      } catch (err) {
+        console.error(err);
+      }
+    };
+    fetchAiStatus();
+  }, [apiBase]);
+
+  const handleTestAiConnection = async () => {
+    setTestingAi(true);
+    try {
+      const res = await fetch(`${apiBase}/api/ai/test-connection`, { method: "POST" });
+      const data = await res.json();
+      setAiStatus(data);
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setTestingAi(false);
+    }
+  };
 
   if (!user) {
     return (
@@ -72,7 +111,7 @@ export default function SettingsPage() {
       <div>
         <h1 className="text-2xl font-bold text-[#111111]">Settings & Profile</h1>
         <p className="text-sm text-gray-600 mt-0.5">
-          Manage your enterprise profile and active demo role.
+          Manage your enterprise profile, active demo role, and AI provider status.
         </p>
       </div>
 
@@ -82,6 +121,51 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* AI Connection Status Card */}
+      <Card className="space-y-4">
+        <div className="flex justify-between items-center">
+          <div>
+            <h2 className="text-base font-bold text-gray-900">AI Intelligence Engine</h2>
+            <p className="text-xs text-gray-500">Google Gemini with automatic offline fallback chain.</p>
+          </div>
+          <Badge variant={aiStatus?.status === "connected" ? "success" : "warning"}>
+            {aiStatus?.status === "connected" ? "Connected" : "Offline (Basic mode)"}
+          </Badge>
+        </div>
+
+        <div className="p-3.5 bg-gray-50 rounded-lg border border-gray-100 text-xs space-y-2">
+          <div className="flex justify-between items-center">
+            <span className="text-gray-500">Active Provider:</span>
+            <span className="font-semibold text-gray-900">{aiStatus?.provider || "Google Gemini"}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-500">Configured Model:</span>
+            <span className="font-mono text-gray-800">{aiStatus?.model || "gemini-2.5-flash"}</span>
+          </div>
+          <div className="flex justify-between items-center">
+            <span className="text-gray-500">Fallback Resilience:</span>
+            <span className="text-gray-700">{aiStatus?.active_fallback || "Local Regex & Canned Fallback"}</span>
+          </div>
+          {aiStatus?.message && (
+            <p className="text-[11px] text-gray-600 pt-1 border-t border-gray-200">
+              {aiStatus.message}
+            </p>
+          )}
+        </div>
+
+        <div className="flex justify-end pt-1">
+          <Button
+            variant="secondary"
+            onClick={handleTestAiConnection}
+            disabled={testingAi}
+            className="text-xs"
+          >
+            {testingAi ? "Testing..." : "Test AI connection"}
+          </Button>
+        </div>
+      </Card>
+
+      {/* Profile Form */}
       <Card className="space-y-5">
         <form onSubmit={handleSubmit} className="space-y-4 text-xs">
           {/* Active Role */}

@@ -14,9 +14,13 @@ from app.repository import Repository
 from app.optimizer import (
     SellerCandidate,
     solve_recovery_plan,
+    get_transit_info,
 )
-from app.llm_adapter import parse_disruption_text, generate_plan_explanation
+from app.llm_adapter import parse_disruption_text, generate_plan_explanation, generate_chat_reply, smart_sort_products
 from app.seed import run_seed
+from dotenv import load_dotenv
+
+load_dotenv()
 
 Base.metadata.create_all(bind=engine)
 
@@ -100,6 +104,18 @@ class PlanApprovalRequest(BaseModel):
     allocations: List[Dict[str, Any]]
     reason: str
     approved: bool
+
+class ChatMessage(BaseModel):
+    role: str
+    content: str
+
+class ChatRequest(BaseModel):
+    messages: List[ChatMessage]
+
+class SmartSortRequest(BaseModel):
+    query: str
+    category: Optional[str] = None
+    buyer_city: Optional[str] = "Bengaluru"
 
 # Auth Helper
 def get_current_user(
@@ -1031,15 +1047,132 @@ def verify_certificate(
 
 # ----------------- PHASE 5: GHOSTLOAD EMERGENCY RECOVERY -----------------
 @app.post("/api/emergency/parse")
-def parse_disruption(req: DisruptionTextRequest):
-    """Sensing Agent: uses LLM adapter with regex/canned fallback."""
-    extracted = parse_disruption_text(req.text)
+def parse_disruption(
+    req: DisruptionTextRequest,
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    """Sensing Agent: uses LLM adapter (Gemini default, SAP fallback, regex/canned)."""
+    user_id = current_user.id if current_user else "anonymous"
+    res = parse_disruption_text(req.text, user_id=user_id)
     return {
         "status": "success",
         "agent": "Sensing Agent",
-        "data": extracted,
-        "llm_provider": "SAP Generative AI Hub (fallback canned ready)",
+        "data": res["data"],
+        "provider_used": res["provider_used"],
+        "is_fallback": res["is_fallback"],
+        "fallback_reason": res["fallback_reason"],
+        "fallback_note": res["fallback_note"],
+        "llm_provider": f"{res['provider_used']} ({'Fallback active' if res['is_fallback'] else 'Online'})",
     }
+
+# ----------------- AI CONNECTION & FEATURE FLAGS -----------------
+@app.get("/api/ai/status")
+def get_ai_status():
+    from app.llm_adapter import test_ai_connection
+    return test_ai_connection()
+
+@app.post("/api/ai/test-connection")
+def post_test_ai_connection():
+    from app.llm_adapter import test_ai_connection
+    return test_ai_connection()
+
+@app.get("/api/features")
+def list_feature_flags():
+    from app.features import FEATURES
+    return FEATURES
+
+# Guarded endpoints for coming_soon features (rejects direct URL calls)
+@app.post("/api/auth/google")
+def google_auth_login():
+    from app.features import require_feature
+    require_feature("google_signin")
+
+@app.post("/api/chat")
+def ai_chat_assistant_query(
+    req: ChatRequest,
+    current_user: Optional[User] = Depends(get_current_user)
+):
+    from app.features import require_feature
+    require_feature("ai_chat_assistant")
+    msgs = [{"role": m.role, "content": m.content} for m in req.messages]
+    uid = current_user.id if current_user else "guest_user"
+    res = generate_chat_reply(msgs, user_id=uid)
+    return res
+
+@app.post("/api/products/smart-sort")
+def ai_smart_sort_products(
+    req: SmartSortRequest,
+    current_user: Optional[User] = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    from app.features import require_feature
+    require_feature("smart_sort")
+
+    repo = Repository(db)
+    raw_products = repo.get_products(category=req.category)
+    buyer_city = req.buyer_city or (current_user.city if current_user else "Bengaluru")
+    now = datetime.datetime.utcnow()
+
+    product_dicts = []
+    for p in raw_products:
+        seller = repo.get_user_by_id(p.seller_id)
+        prof = repo.ensure_seller_profile(p.seller_id)
+        certs = repo.get_seller_certificates(p.seller_id)
+        valid_certs = [c for c in certs if c.status == "APPROVED" and c.expiry_date > now]
+        expiring_certs = [c for c in certs if 0 < (c.expiry_date - now).days <= 30]
+
+        transit_days, transit_cost = get_transit_info(p.city, buyer_city)
+        total_lead_days = p.lead_days + transit_days
+        total_delivered_cost = p.price_per_unit + transit_cost
+
+        badges = []
+        if len(valid_certs) > 0 and prof.trust_score >= 80.0:
+            badges.append("QC Verified")
+        if prof.total_orders < 5:
+            badges.append("New Seller")
+        if len(expiring_certs) > 0:
+            badges.append("Certificate Expiring")
+
+        specs = json.loads(p.specs_json) if p.specs_json else {}
+        product_dicts.append({
+            "id": p.id,
+            "title": p.title,
+            "category": p.category,
+            "listing_type": p.listing_type,
+            "specs": specs,
+            "units_available": p.units_available,
+            "price_per_unit": p.price_per_unit,
+            "lead_days": p.lead_days,
+            "transit_days": transit_days,
+            "total_lead_days": total_lead_days,
+            "transit_cost_per_unit": transit_cost,
+            "total_delivered_cost": total_delivered_cost,
+            "min_order": p.min_order,
+            "city": p.city,
+            "image_url": p.image_url,
+            "seller_id": p.seller_id,
+            "seller_name": seller.name if seller else "Seller",
+            "trust_score": prof.trust_score,
+            "avg_rating": prof.avg_rating,
+            "avg_quality_rating": round(getattr(prof, "avg_quality_rating", 4.8), 1),
+            "avg_delivery_rating": round(getattr(prof, "avg_delivery_rating", 4.7), 1),
+            "ratings_count": getattr(prof, "ratings_count", 1),
+            "total_orders": prof.total_orders,
+            "badges": badges,
+        })
+
+    uid = current_user.id if current_user else "guest_user"
+    return smart_sort_products(req.query, product_dicts, user_id=uid)
+
+@app.get("/api/route-map")
+def get_route_map():
+    from app.features import require_feature
+    require_feature("route_map")
+
+@app.get("/api/impact")
+def get_impact_analytics():
+    from app.features import require_feature
+    require_feature("impact_panel")
 
 @app.post("/api/emergency/solve")
 def solve_emergency_recovery(

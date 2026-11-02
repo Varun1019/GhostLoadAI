@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth, UserRole } from "@/context/AuthContext";
 import { useState, useRef, useEffect } from "react";
 import { Badge } from "@/ui/Badge";
+import { ComingSoonBadge } from "@/components/ui/ComingSoon";
 
 export default function Navbar() {
   const { user, logout, switchRole, apiBase } = useAuth();
@@ -162,6 +163,14 @@ export default function Navbar() {
                   >
                     Settings & profile
                   </Link>
+                  <Link
+                    href="/chat"
+                    onClick={() => setMenuOpen(false)}
+                    className="px-4 py-1.5 text-gray-800 font-medium hover:bg-gray-50 text-xs flex items-center justify-between"
+                  >
+                    <span>AI Copilot (Gemini)</span>
+                    <Badge variant="blue">Live</Badge>
+                  </Link>
                   <button
                     onClick={() => {
                       setLearningHubOpen(true);
@@ -177,6 +186,37 @@ export default function Navbar() {
                   >
                     Export audit log (CSV)
                   </button>
+                </div>
+
+                {/* Upcoming Modules */}
+                <div className="py-1 border-b border-gray-100">
+                  <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider block px-4 pt-1 pb-0.5">
+                    Preview features
+                  </span>
+                  <Link
+                    href="/route-map"
+                    onClick={() => setMenuOpen(false)}
+                    className="px-4 py-1 text-gray-500 hover:bg-gray-50 text-xs flex items-center justify-between"
+                  >
+                    <span>Route map canvas</span>
+                    <ComingSoonBadge />
+                  </Link>
+                  <Link
+                    href="/impact"
+                    onClick={() => setMenuOpen(false)}
+                    className="px-4 py-1 text-gray-500 hover:bg-gray-50 text-xs flex items-center justify-between"
+                  >
+                    <span>ESG Carbon tracker</span>
+                    <ComingSoonBadge />
+                  </Link>
+                  <Link
+                    href="/warehouse"
+                    onClick={() => setMenuOpen(false)}
+                    className="px-4 py-1 text-gray-500 hover:bg-gray-50 text-xs flex items-center justify-between"
+                  >
+                    <span>Warehouse & freight</span>
+                    <ComingSoonBadge />
+                  </Link>
                 </div>
 
                 {/* Sign out */}

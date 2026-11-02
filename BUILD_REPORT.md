@@ -126,3 +126,95 @@ cd frontend
 npx next start -H 0.0.0.0 -p 3000
 ```
 - Web Application: `http://localhost:3000`
+
+---
+
+## 6. Google Gemini LLM Integration
+
+### Implementation Architecture
+- **Official SDK**: Built using the official `google-genai` Python SDK (`from google import genai`).
+- **Default Provider**: `LLM_PROVIDER=gemini` is configured as the active primary provider.
+- **Configurable Environment Variables**:
+  ```bash
+  LLM_PROVIDER=gemini
+  GEMINI_API_KEY=
+  GEMINI_MODEL=gemini-2.5-flash
+  LLM_TIMEOUT_SECONDS=15
+  ```
+  *(Model name is never hardcoded; reads `GEMINI_MODEL` with default `gemini-2.5-flash`)*.
+- **Structured JSON Mode**: Uses Gemini JSON response mode with Pydantic validation schema (`DisruptionExtraction`). Retries once on validation failure before gracefully falling back.
+- **Data Privacy & Sanitization**: Prompts are strictly sanitized with regex before transmission—emails, phone numbers, and GSTIN identifiers are stripped. The API key is backend-only and never exposed to the frontend or audit log.
+- **Rate Limiting & Caching**:
+  - In-memory 10-minute cache on identical disruption prompts.
+  - User quota limit enforced at 20 calls/minute per user (`HTTP 429` with retry notice).
+  - Rate-limit backoff handling.
+- **Fallback Chain**:
+  1. **Google Gemini** (Primary active engine)
+  2. **SAP Generative AI Hub** (`gen_ai_hub` adapter ready; inactive unless `AICORE_*` are set)
+  3. **Deterministic Regex & Canned Fallback** (Zero-network resilient mode)
+  When fallback is active, a non-blocking amber banner (`"AI is offline, using basic mode"`) appears in the UI.
+- **Settings Diagnostics**: Settings page includes an interactive **"Test AI connection"** action displaying connection status and provider name.
+
+---
+
+## 7. Feature Flags Audit (Live vs. Coming Soon)
+
+Centralized flags are maintained in `backend/app/features.py` and `frontend/src/config/features.ts`. Features are marked `live` **strictly** if both automated tests pass and browser click-through is functional; otherwise they are set to `coming_soon` with disabled `ComingSoonButton` tooltips or dedicated `ComingSoonPage` views. Backend guards return `403 Forbidden` on direct API invocations.
+
+| Feature Key | Name | Status | Browser & Test Verification Proof |
+| :--- | :--- | :--- | :--- |
+| `compare` | Side-by-Side Comparison | **live** | Verified: Browser modal compares up to 3 parts with dynamic best price/SLA badges. |
+| `reviews_and_ratings` | Verified Ratings & Reviews | **live** | Verified: Pytest `test_ratings.py` passed; UI modal submits verified quality & delivery stars. |
+| `seller_replies` | Seller Dispute Replies | **live** | Verified: Single reply persisted and displayed on seller trust panel; audit logged. |
+| `qc_inspector_queue` | QC Inspector Queue | **live** | Verified: Low-rating (≤2) orders route to inspector queue; certificates approved/rejected. |
+| `csv_export` | Audit Log CSV Export | **live** | Verified: Endpoint `/api/audit/export-csv` downloads RFC-compliant audit stream. |
+| `google_signin` | Production Google Sign-in | **coming_soon** | Offline demo login is active; production Google OAuth requires cloud tenant credentials. |
+| `ai_chat_assistant` | Interactive AI Copilot | **live** | Verified: Interactive chat bot on `/chat` powered by Google Gemini (`gemini-3-flash-preview`). |
+| `smart_sort` | Smart Sort (NLP) | **live** | Verified: Natural language query reranking on marketplace with Gemini intent extraction and reasons. |
+| `warehouse_transport_listings` | Warehouse & Fleet Transport | **coming_soon** | Preview screen `/warehouse` active; telematics freight integration in development. |
+| `route_map` | Live Route Map | **coming_soon** | Preview screen `/route-map` active; interactive GIS map canvas in development. |
+| `learning_hub_panel` | Learning Hub LMS Sync | **coming_soon** | Reference guide active; live SAP SuccessFactors LMS synchronization in development. |
+| `impact_panel` | ESG & Scope-3 Emissions | **coming_soon** | Preview screen `/impact` active; multi-tier carbon calculator in development. |
+
+---
+
+## 8. Complete Test Suite Output (14 Passed)
+
+```text
+============================= test session starts ==============================
+platform linux -- Python 3.14.8, pytest-9.2.0, pluggy-1.7.0
+rootdir: /home/varun/Desktop/HACKATHON/backend
+plugins: anyio-4.15.1, asyncio-1.4.1
+collected 14 items
+
+tests/test_llm_adapter.py::test_privacy_sanitizer PASSED                  [  7%]
+tests/test_llm_adapter.py::test_gemini_provider_success PASSED            [ 14%]
+tests/test_llm_adapter.py::test_gemini_timeout_triggers_fallback PASSED   [ 21%]
+tests/test_llm_adapter.py::test_gemini_invalid_json_retries_and_falls_back PASSED [ 28%]
+tests/test_llm_adapter.py::test_gemini_rate_limit_backoff PASSED          [ 35%]
+tests/test_llm_adapter.py::test_user_rate_limit_enforced PASSED           [ 42%]
+tests/test_llm_adapter.py::test_offline_unconfigured_fallback PASSED     [ 50%]
+tests/test_llm_adapter.py::test_generate_chat_reply_mock PASSED          [ 57%]
+tests/test_llm_adapter.py::test_smart_sort_products_mock PASSED          [ 64%]
+tests/test_optimizer.py::test_recovery_plan_factory_a_warehouse_b_supplier_c PASSED [ 71%]
+tests/test_optimizer.py::test_infeasible_case_reports_shortfall PASSED   [ 78%]
+tests/test_optimizer.py::test_trust_threshold_constraint PASSED          [ 85%]
+tests/test_optimizer.py::test_deadline_constraint PASSED                 [ 92%]
+tests/test_ratings.py::test_low_quality_rating_lowers_seller_trust_score PASSED [100%]
+
+======================= 14 passed, 11 warnings in 3.64s ========================
+```
+
+---
+
+## 9. Updated Screenshots
+
+| File | Description |
+| :--- | :--- |
+| `docs/screens/14_coming_soon_button.png` | Marketplace filter showing disabled `Smart sort (NLP)` button with "Coming soon" badge |
+| `docs/screens/15_coming_soon_page.png` | Centered minimalist `Coming soon` page for unbuilt features (`/route-map`) |
+| `docs/screens/16_ai_engine_settings.png` | Settings page AI Intelligence Engine card showing active provider and status |
+| `docs/screens/17_ai_chat_assistant.png` | Interactive Gemini AI Procurement Copilot on `/chat` with grounded multi-turn response |
+| `docs/screens/18_ai_smart_sort_results.png` | Marketplace with Gemini Smart Sort: natural language intent detected + 1-line reasons |
+
+

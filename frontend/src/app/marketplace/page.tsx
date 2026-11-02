@@ -28,6 +28,7 @@ interface ProductItem {
   badges: string[];
   specs: Record<string, any>;
   min_order: number;
+  ai_rank_reason?: string;
 }
 
 const CATEGORIES = [
@@ -65,6 +66,49 @@ export default function MarketplacePage() {
   const [orderProduct, setOrderProduct] = useState<ProductItem | null>(null);
   const [orderQty, setOrderQty] = useState(50);
   const [submittingOrder, setSubmittingOrder] = useState(false);
+
+  // AI Smart Sort State (Google Gemini)
+  const [smartSortActive, setSmartSortActive] = useState(false);
+  const [smartSortInput, setSmartSortInput] = useState("");
+  const [smartSortCriteria, setSmartSortCriteria] = useState<string | null>(null);
+  const [smartSorting, setSmartSorting] = useState(false);
+
+  const handleSmartSort = async (customQuery?: string) => {
+    const q = (customQuery || smartSortInput || searchQuery).trim();
+    if (!q) return;
+    setSmartSorting(true);
+    try {
+      const res = await fetch(`${apiBase}/api/products/smart-sort`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "X-Demo-User": user?.id || "buyer-1",
+        },
+        body: JSON.stringify({
+          query: q,
+          category: selectedCategory === "All" ? null : selectedCategory,
+          buyer_city: user?.city || "Bengaluru",
+        }),
+      });
+      const data = await res.json();
+      if (data.ranked_products) {
+        setProducts(data.ranked_products);
+        setSmartSortActive(true);
+        setSmartSortCriteria(data.criteria_detected || "Custom AI Match");
+      }
+    } catch (err) {
+      console.error(err);
+    } finally {
+      setSmartSorting(false);
+    }
+  };
+
+  const handleResetSmartSort = () => {
+    setSmartSortActive(false);
+    setSmartSortCriteria(null);
+    setSmartSortInput("");
+    fetchProducts();
+  };
 
   const fetchProducts = async () => {
     setLoading(true);
@@ -159,6 +203,62 @@ export default function MarketplacePage() {
           <Button type="submit">Search</Button>
         </form>
 
+        {/* AI Smart Sort Input Bar */}
+        <div className="p-3 bg-blue-50/70 border border-blue-200 rounded-lg flex flex-col sm:flex-row items-center gap-2 text-xs">
+          <span className="text-blue-900 font-semibold whitespace-nowrap flex items-center gap-1.5">
+            <span>✨</span>
+            <span>Gemini Smart Sort:</span>
+          </span>
+          <input
+            type="text"
+            value={smartSortInput}
+            onChange={(e) => setSmartSortInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                handleSmartSort();
+              }
+            }}
+            placeholder="e.g. cheapest parts with 2-day delivery from high trust suppliers"
+            className="flex-1 bg-white border border-gray-300 rounded px-3 py-1.5 text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-blue-700"
+          />
+          <div className="flex items-center gap-2 w-full sm:w-auto justify-end">
+            <Button
+              type="button"
+              onClick={() => handleSmartSort()}
+              disabled={smartSorting || !smartSortInput.trim()}
+            >
+              {smartSorting ? "Ranking..." : "Sort with AI"}
+            </Button>
+            {smartSortActive && (
+              <button
+                type="button"
+                onClick={handleResetSmartSort}
+                className="text-xs text-gray-600 hover:text-gray-900 underline font-medium cursor-pointer"
+              >
+                Reset
+              </button>
+            )}
+          </div>
+        </div>
+
+        {/* Active Smart Sort Banner */}
+        {smartSortActive && smartSortCriteria && (
+          <div className="p-2.5 bg-blue-100/70 border border-blue-300 rounded-lg text-xs flex items-center justify-between text-blue-950">
+            <span className="flex items-center gap-1.5">
+              <span className="font-semibold">🎯 Gemini Intent Detected:</span>
+              <span>{smartSortCriteria}</span>
+            </span>
+            <button
+              type="button"
+              onClick={handleResetSmartSort}
+              className="text-xs text-blue-800 hover:text-blue-950 underline font-semibold cursor-pointer"
+            >
+              Clear ✕
+            </button>
+          </div>
+        )}
+
         {/* Category Chips */}
         <div className="flex items-center gap-2 overflow-x-auto pb-1 text-sm">
           {CATEGORIES.map((cat) => (
@@ -190,7 +290,17 @@ export default function MarketplacePage() {
           {showMoreOptions && (
             <div className="mt-3 p-4 bg-gray-50 rounded-lg border border-gray-200 grid grid-cols-1 sm:grid-cols-3 gap-4 text-xs">
               <div>
-                <label className="block text-gray-600 mb-1 font-medium">Sort by</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-gray-600 font-medium">Sort by</label>
+                  <button
+                    type="button"
+                    onClick={() => handleSmartSort(searchQuery || "cheapest parts with fast delivery")}
+                    disabled={smartSorting}
+                    className="text-[11px] text-blue-700 hover:text-blue-900 font-semibold cursor-pointer flex items-center gap-1"
+                  >
+                    <span>✨ AI Smart Sort</span>
+                  </button>
+                </div>
                 <select
                   value={sortBy}
                   onChange={(e) => setSortBy(e.target.value)}
@@ -291,6 +401,13 @@ export default function MarketplacePage() {
                       <span className="text-gray-400">({p.ratings_count || 1})</span>
                     </div>
                   </div>
+
+                  {p.ai_rank_reason && (
+                    <div className="text-[11px] font-medium text-blue-900 bg-blue-50/90 p-2 rounded border border-blue-200 leading-snug">
+                      <span className="font-semibold text-blue-700">✨ AI Match: </span>
+                      <span>{p.ai_rank_reason}</span>
+                    </div>
+                  )}
 
                   <div className="pt-2 flex items-baseline justify-between border-t border-gray-100">
                     <div>
